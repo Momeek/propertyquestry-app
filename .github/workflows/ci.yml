@@ -144,7 +144,7 @@ jobs:
           docker build -t "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:${GITHUB_SHA}" -t "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:latest" -f PropertyQuestClient/Dockerfile PropertyQuestClient
 
       - name: Trivy scan frontend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35
         with:
           scan-type: image
           image-ref: "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:${GITHUB_SHA}"

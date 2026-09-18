@@ -229,3 +229,34 @@ jobs:
             git commit -m "Update PropertyQuest images to ${IMAGE_TAG}"
             git push origin HEAD:${{ github.ref_name }}
           fi
+
+  slack-notify:
+    name: Slack notification
+    needs:
+      - build-and-sonar
+      - docker-build-push
+      - update-helm
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_STATUS: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'success' }}
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.27.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          payload: |
+            {
+              "text": "${{ github.workflow }}: ${{ env.PIPELINE_STATUS }} on ${{ github.ref_name }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*${{ github.workflow }}*\nStatus: *${{ env.PIPELINE_STATUS }}*\nBranch: `${{ github.ref_name }}`\nCommit: `${{ github.sha }}`\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow>"
+                  }
+                }
+              ]
+            }

@@ -193,9 +193,9 @@ jobs:
         run: |
           cd helm-repo
           if yq e '.backend' helm/propertyquest/values.yaml >/dev/null 2>&1; then
-            yq -i '.backend.image = strenv(ECR_REGISTRY) + "/propertrybackendimg" | .backend.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
+            yq -i '.backend.image = strenv(ECR_REGISTRY) + "/propertyquestrybackendimg" | .backend.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
           elif yq e '.app' helm/propertyquest/values.yaml >/dev/null 2>&1; then
-            yq -i '.app.image = strenv(ECR_REGISTRY) + "/propertrybackendimg" | .app.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
+            yq -i '.app.image = strenv(ECR_REGISTRY) + "/propertyquestrybackendimg" | .app.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
           fi
 
       - name: Update frontend values
@@ -203,9 +203,9 @@ jobs:
         run: |
           cd helm-repo
           if yq e '.frontend' helm/propertyquest/values.yaml >/dev/null 2>&1; then
-            yq -i '.frontend.image = strenv(ECR_REGISTRY) + "/propertryfrontendimg" | .frontend.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
+            yq -i '.frontend.image = strenv(ECR_REGISTRY) + "/propertyquestryfrontendimg" | .frontend.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
           elif yq e '.app' helm/propertyquest/values.yaml >/dev/null 2>&1; then
-            yq -i '.app.image = strenv(ECR_REGISTRY) + "/propertryfrontendimg" | .app.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
+            yq -i '.app.image = strenv(ECR_REGISTRY) + "/propertyquestryfrontendimg" | .app.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
           fi
 
       - name: Commit and push Helm update

@@ -1,0 +1,231 @@
+name: PropertyQuest CI/CD
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-sonar:
+    name: Build and analyze ${{ matrix.app }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: backend
+            working_directory: properQuestServer
+            trivy_report: trivy-backend.txt
+          - app: frontend
+            working_directory: PropertyQuestClient
+            trivy_report: trivy-frontend.txt
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('properQuestServer/package-lock.json', 'PropertyQuestClient/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Cache SonarQube data
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar
+          key: ${{ runner.os }}-sonar-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-sonar-
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: ${{ runner.os }}-trivy-${{ hashFiles('properQuestServer/package-lock.json', 'PropertyQuestClient/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-trivy-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            properQuestServer/package-lock.json
+            PropertyQuestClient/package-lock.json
+
+      - name: Install dependencies (${{ matrix.app }})
+        working-directory: ${{ matrix.working_directory }}
+        run: npm install --no-fund --no-audit
+
+      - name: Build app (${{ matrix.app }})
+        working-directory: ${{ matrix.working_directory }}
+        run: npm run build
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          projectBaseDir: .
+
+      - name: SonarQube Quality Gate
+        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  docker-build-push:
+    name: Build and push Docker images to ECR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      ecr_registry: ${{ steps.login-ecr.outputs.registry }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.OIDC }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        shell: bash
+        run: |
+          echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build backend image
+        shell: bash
+        run: |
+          docker build -t "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:${GITHUB_SHA}" -t "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:latest" -f properQuestServer/Dockerfile properQuestServer
+
+      - name: Trivy scan backend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:${GITHUB_SHA}"
+          format: table
+          output: trivy-backend-image.txt
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Upload backend Trivy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-image-trivy-report
+          path: trivy-backend-image.txt
+          if-no-files-found: warn
+
+      - name: Push backend image
+        shell: bash
+        run: |
+          docker push "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:${GITHUB_SHA}"
+          docker push "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:latest"
+
+      - name: Build frontend image
+        shell: bash
+        run: |
+          docker build -t "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:${GITHUB_SHA}" -t "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:latest" -f PropertyQuestClient/Dockerfile PropertyQuestClient
+
+      - name: Trivy scan frontend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:${GITHUB_SHA}"
+          format: table
+          output: trivy-frontend-image.txt
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - name: Upload frontend Trivy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-image-trivy-report
+          path: trivy-frontend-image.txt
+          if-no-files-found: warn
+
+      - name: Push frontend image
+        shell: bash
+        run: |
+          docker push "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:${GITHUB_SHA}"
+          docker push "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:latest"
+
+  update-helm:
+    name: Update Helm values
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ needs.docker-build-push.outputs.image_tag }}
+      ECR_REGISTRY: ${{ needs.docker-build-push.outputs.ecr_registry }}
+
+    steps:
+      - name: Install yq
+        shell: bash
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Clone Helm repository
+        shell: bash
+        run: |
+          git clone "https://${{ secrets.HELM_REPO_USER }}:${{ secrets.GITOPS_PAT }}@github.com/${{ github.repository_owner }}/${{ vars.HELM_REPO_NAME }}.git" helm-repo
+
+      - name: Update backend values
+        shell: bash
+        run: |
+          cd helm-repo
+          if yq e '.backend' helm/propertyquest/values.yaml >/dev/null 2>&1; then
+            yq -i '.backend.image = strenv(ECR_REGISTRY) + "/propertrybackendimg" | .backend.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
+          elif yq e '.app' helm/propertyquest/values.yaml >/dev/null 2>&1; then
+            yq -i '.app.image = strenv(ECR_REGISTRY) + "/propertrybackendimg" | .app.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
+          fi
+
+      - name: Update frontend values
+        shell: bash
+        run: |
+          cd helm-repo
+          if yq e '.frontend' helm/propertyquest/values.yaml >/dev/null 2>&1; then
+            yq -i '.frontend.image = strenv(ECR_REGISTRY) + "/propertryfrontendimg" | .frontend.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
+          elif yq e '.app' helm/propertyquest/values.yaml >/dev/null 2>&1; then
+            yq -i '.app.image = strenv(ECR_REGISTRY) + "/propertryfrontendimg" | .app.tag = strenv(IMAGE_TAG)' helm/propertyquest/values.yaml
+          fi
+
+      - name: Commit and push Helm update
+        shell: bash
+        run: |
+          cd helm-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helm/propertyquest/values.yaml
+          if git diff --cached --quiet; then
+            echo "No chart values changes to commit."
+          else
+            git commit -m "Update PropertyQuest images to ${IMAGE_TAG}"
+            git push origin HEAD:${{ github.ref_name }}
+          fi

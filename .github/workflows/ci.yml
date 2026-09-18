@@ -116,7 +116,7 @@ jobs:
           docker build -t "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:${GITHUB_SHA}" -t "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:latest" -f properQuestServer/Dockerfile properQuestServer
 
       - name: Trivy scan backend image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35
         with:
           scan-type: image
           image-ref: "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:${GITHUB_SHA}"

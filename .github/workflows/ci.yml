@@ -135,19 +135,19 @@ jobs:
       - name: Push backend image
         shell: bash
         run: |
-          docker push "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:${GITHUB_SHA}"
-          docker push "${{ steps.login-ecr.outputs.registry }}/propertrybackendimg:latest"
+          docker push "${{ steps.login-ecr.outputs.registry }}/propertyquestrybackendimg:${GITHUB_SHA}"
+          docker push "${{ steps.login-ecr.outputs.registry }}/propertyquestrybackendimg:latest"
 
       - name: Build frontend image
         shell: bash
         run: |
-          docker build -t "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:${GITHUB_SHA}" -t "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:latest" -f PropertyQuestClient/Dockerfile PropertyQuestClient
+          docker build -t "${{ steps.login-ecr.outputs.registry }}/propertyquestryfrontendimg:${GITHUB_SHA}" -t "${{ steps.login-ecr.outputs.registry }}/propertyquestryfrontendimg:latest" -f PropertyQuestClient/Dockerfile PropertyQuestClient
 
       - name: Trivy scan frontend image
         uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: image
-          image-ref: "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:${{ github.sha }}"
+          image-ref: "${{ steps.login-ecr.outputs.registry }}/propertyquestryfrontendimg:${{ github.sha }}"
           format: table
           output: trivy-frontend-image.txt
           severity: HIGH,CRITICAL
@@ -163,8 +163,8 @@ jobs:
       - name: Push frontend image
         shell: bash
         run: |
-          docker push "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:${GITHUB_SHA}"
-          docker push "${{ steps.login-ecr.outputs.registry }}/propertryfrontendimg:latest"
+          docker push "${{ steps.login-ecr.outputs.registry }}/propertyquestryfrontendimg:${GITHUB_SHA}"
+          docker push "${{ steps.login-ecr.outputs.registry }}/propertyquestryfrontendimg:latest"
 
   update-helm:
     name: Update Helm values

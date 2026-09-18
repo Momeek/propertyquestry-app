@@ -105,7 +105,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.OIDC }}
+          role-to-assume: ${{ vars.CI_AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -194,7 +194,7 @@ jobs:
       - name: Clone Helm repository
         shell: bash
         run: |
-          git clone "https://${{ secrets.HELM_REPO_USER }}:${{ secrets.GITOPS_PAT }}@github.com/${{ github.repository_owner }}/${{ vars.HELM_REPO_NAME }}.git" helm-repo
+          git clone "https://${{ vars.HELM_REPO_USER }}:${{ secrets.GITOPS_PAT }}@github.com/${{ github.repository_owner }}/${{ vars.HELM_REPO_NAME }}.git" helm-repo
 
       - name: Update backend values
         shell: bash
